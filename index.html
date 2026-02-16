@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>הגנת הממלכה: חידון היסטוריה</title>
+    <style>
+        :root {
+            --bg: #1a1a1a;
+            --panel: #2c3e50;
+            --accent: #f1c40f;
+            --danger: #e74c3c;
+            --gold: #f39c12;
+            --cyan: #00d2ff;
+            --success: #2ecc71;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg);
+            color: #ecf0f1;
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            overflow: hidden;
+            display: flex; flex-direction: column; align-items: center;
+            height: 100vh; user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw; height: 60vh;
+            max-width: 950px;
+            background: #4a8d32;
+            border-bottom: 4px solid #34495e;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            cursor: crosshair;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        .hud-item {
+            position: absolute; top: 15px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px 20px; border-radius: 30px;
+            font-weight: 900; border: 2px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            direction: ltr;
+        }
+
+        #controls {
+            width: 100%; flex: 1;
+            background: var(--panel);
+            padding: 15px; display: flex; flex-direction: column; gap: 10px;
+            box-sizing: border-box;
+            border-top: 4px solid #1a252f;
+        }
+
+        .row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+        .btn {
+            background: #ecf0f1; border: none; border-radius: 12px;
+            padding: 12px; cursor: pointer; font-weight: bold;
+            display: flex; flex-direction: column; align-items: center;
+            min-width: 100px; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border-bottom: 6px solid #bdc3c7;
+        }
+
+        .btn:hover:not(:disabled) { transform: translateY(-2px); }
+        .btn:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 2px; }
+        .btn:disabled { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
+
+        .btn.ability { background: #3498db; color: white; border-bottom-color: #2980b9; }
+        .btn.tower { background: #fff; color: #2c3e50; }
+
+        .price { font-size: 0.8rem; color: var(--gold); margin-top: 4px; }
+
+        .screen {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; backdrop-filter: blur(8px);
+        }
+
+        /* Quiz & Victory UI */
+        #quiz-screen, #wave-victory-screen {
+            display: none;
+            direction: rtl;
+        }
+        
+        .card {
+            background: #fff; color: #2c3e50; padding: 30px; border-radius: 20px;
+            width: 85%; max-width: 500px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            border: 5px solid var(--gold);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .card-title { font-size: 1.8rem; color: var(--gold); margin-bottom: 15px; font-weight: 900; }
+        .card-text { font-size: 1.3rem; font-weight: 700; margin-bottom: 25px; line-height: 1.4; }
+        
+        .quiz-options { display: grid; gap: 12px; width: 100%; }
+        .option-btn {
+            padding: 14px; border: 2px solid #ddd; border-radius: 10px;
+            cursor: pointer; font-weight: 600; background: #f9f9f9; transition: 0.2s;
+            font-size: 1.1rem; text-align: right;
+        }
+        .option-btn:hover { background: #eee; border-color: var(--gold); }
+
+        .main-btn {
+            padding: 15px 40px; font-size: 1.5rem; background: var(--accent);
+            border: none; border-radius: 50px; cursor: pointer; font-weight: 900;
+            box-shadow: 0 6px 0 #d35400; transition: 0.1s; color: #2c3e50;
+        }
+
+        .main-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #d35400; }
+
+        #build-tip {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: var(--accent); color: #000; padding: 8px 25px; border-radius: 20px;
+            display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translate(-50%, 0); }
+            50% { transform: translate(-50%, -5px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-layer">
+            <div class="hud-item" style="right: 20px;">❤️ <span id="hp-txt">20</span></div>
+            <div class="hud-item" style="left: 50%; transform: translateX(-50%);">גל <span id="wave-txt">1</span> 🌊</div>
+            <div class="hud-item" style="left: 20px;">💰 <span id="gold-txt">200</span></div>
+            <div id="build-tip">בנה הגנה כעת</div>
+        </div>
+
+        <div id="start-screen" class="screen">
+            <h1 style="color:var(--accent); font-size: 4rem; margin: 0; text-shadow: 0 5px 15px rgba(0,0,0,0.5);">הגנת הממלכה</h1>
+            <h2 style="color:white; font-size: 1.5rem; margin: 0 0 40px 0; letter-spacing: 5px;">קרב ההיסטוריה</h2>
+            <button class="main-btn" onclick="initGame()">התחל בקרב</button>
+        </div>
+
+        <!-- Wave Victory Screen -->
+        <div id="wave-victory-screen" class="screen">
+            <div class="card">
+                <div class="card-title">כל הכבוד! 🏆</div>
+                <div class="card-text" id="wave-victory-text">ניצחת את גל 1!</div>
+                <button class="main-btn" onclick="goToQuiz()">המשך לחידון הבונוס</button>
+            </div>
+        </div>
+
+        <!-- Quiz Screen -->
+        <div id="quiz-screen" class="screen">
+            <div class="card">
+                <div style="color:var(--gold); font-weight: 900; margin-bottom: 10px; font-size: 1.2rem;">שאלת בונוס (כיתה ז')</div>
+                <div class="card-text" id="q-text">טוען שאלה...</div>
+                <div class="quiz-options" id="q-options"></div>
+            </div>
+        </div>
+
+        <div id="gameover-screen" class="screen" style="display:none">
+            <h1 style="color:var(--danger); font-size: 4rem;">הובסתם</h1>
+            <p>הממלכה נפלה בידי האויב.</p>
+            <button class="main-btn" onclick="location.reload()">נסה שוב</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="row">
+            <button class="btn tower" onclick="setBuild('archer')" id="b-archer">🏹 קשת <span class="price">50💰</span></button>
+            <button class="btn tower" onclick="setBuild('mage')" id="b-mage">🔮 קוסם <span class="price">90💰</span></button>
+            <button class="btn tower" onclick="setBuild('tesla')" id="b-tesla">⚡ טסלה <span class="price">150💰</span></button>
+            <button class="btn tower" onclick="setBuild('sniper')" id="b-sniper">🎯 צלף <span class="price">200💰</span></button>
+        </div>
+        <div class="row">
+            <button class="btn ability" onclick="castMeteor()" id="b-meteor">☄️ מטאור <span class="price">מוכן</span></button>
+            <button class="btn ability" onclick="castFreeze()" id="b-freeze">❄️ הקפאה <span class="price">מוכן</span></button>
+            <button class="main-btn" style="font-size: 1.2rem; padding: 12px 40px;" id="next-wave-btn" onclick="nextWave()">שלח גל</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const V_W = 900, V_H = 500;
+    let scale = 1, gold = 200, hp = 20, wave = 0;
+    let gameRunning = false, buildMode = null, isWaveActive = false;
+    let mouse = { x: 0, y: 0 };
+
+    let enemies = [], towers = [], projectiles = [], effects = [], particles = [];
+    let meteorCooldown = 0, freezeCooldown = 0, freezeTimer = 0;
+    let enemiesToSpawn = 0; // Track remaining spawns to prevent early wave end
+
+    const historyQuestions = [
+        { q: "מי נחשב למייסד האסלאם?", a: ["עלי", "מוחמד", "אבו בכר", "עומר"], c: 1 },
+        { q: "מהי העיר הקדושה ביותר לאסלאם?", a: ["ירושלים", "מדינה", "מכה", "בגדאד"], c: 2 },
+        { q: "כיצד נקרא הספר הקדוש של המוסלמים?", a: ["הברית החדשה", "הקוראן", "החדית'", "הגמרא"], c: 1 },
+        { q: "מי הוכתר לקיסר הרומאים בשנת 800?", a: ["קרל הגדול", "קלוביס", "יוסטיניאנוס", "פיפין"], c: 0 },
+        { q: "כיצד נקראת השיטה החברתית של ימי הביניים?", a: ["דמוקרטיה", "פאודליזם", "קומוניזם", "קפיטליזם"], c: 1 },
+        { q: "מי עמד בראש המדרג הפאודלי?", a: ["הוואסל", "האביר", "המלך", "הצמית"], c: 2 },
+        { q: "איזה שבט גרמני הקים ממלכה בצרפת?", a: ["הויזיגותים", "הוונדלים", "הפרנקים", "הסקסונים"], c: 2 },
+        { q: "מהי ה'הג'רה' באסלאם?", a: ["מלחמה", "הגירה למדינה", "עלייה לרגל", "לידת מוחמד"], c: 1 },
+        { q: "מה היה תפקיד האביר?", a: ["חקלאי", "איש דת", "לוחם ומגן", "סוחר"], c: 2 },
+        { q: "איך נקרא השטח שניתן לוואסל?", a: ["קולוניה", "פאודום (פיף)", "פוליס", "פרובינציה"], c: 1 }
+    ];
+
+    const path = [
+        {x: -50, y: 250}, {x: 200, y: 250}, {x: 200, y: 100},
+        {x: 500, y: 100}, {x: 500, y: 400}, {x: 750, y: 400},
+        {x: 750, y: 200}, {x: 950, y: 200}
+    ];
+
+    function playSfx(freq, type, dur, vol, slide = 0) {
+        try {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            if (slide) osc.frequency.exponentialRampToValueAtTime(slide, audioCtx.currentTime + dur);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        } catch(e){}
+    }
+
+    const sounds = {
+        deathSmall: () => playSfx(400, 'sine', 0.1, 0.1, 800),
+        deathLarge: () => playSfx(100, 'sawtooth', 0.4, 0.1, 20),
+        build: () => playSfx(150, 'square', 0.15, 0.08, 50),
+        meteor: () => { playSfx(800, 'sine', 1, 0.1, 40); setTimeout(() => playSfx(50, 'sawtooth', 0.5, 0.2), 800); },
+        freeze: () => playSfx(600, 'sine', 0.5, 0.1, 200),
+        success: () => playSfx(523.25, 'sine', 0.3, 0.1, 1046.5),
+        fail: () => playSfx(150, 'sawtooth', 0.3, 0.1, 50),
+        winWave: () => { playSfx(400, 'triangle', 0.2, 0.1); setTimeout(()=>playSfx(600, 'triangle', 0.4, 0.1), 200); }
+    };
+
+    function resize() {
+        const rect = canvas.parentNode.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        scale = canvas.width / V_W;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        gameRunning = true;
+        updateUI();
+        requestAnimationFrame(loop);
+    }
+
+    class Particle {
+        constructor(x, y, color, speed) {
+            this.x = x; this.y = y; this.color = color;
+            this.vx = (Math.random()-0.5)*speed;
+            this.vy = (Math.random()-0.5)*speed;
+            this.life = 1.0;
+            this.decay = Math.random()*0.05 + 0.02;
+        }
+        update() { this.x += this.vx; this.y += this.vy; this.life -= this.decay; }
+        draw() {
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x*scale, this.y*scale, 3*scale, 3*scale);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    class Enemy {
+        constructor(w, type) {
+            this.x = path[0].x; this.y = path[0].y;
+            this.pIdx = 0; this.dead = false; this.type = type;
+            
+            const difficulty = Math.pow(1.22, w);
+            if(type === 'runner') { this.hp = 35 * difficulty; this.speed = 2.8; this.r = 8; this.color = '#f1c40f'; }
+            else if(type === 'shield') { this.hp = 180 * difficulty; this.speed = 0.9; this.r = 13; this.color = '#34495e'; }
+            else if(type === 'boss') { this.hp = 800 * difficulty; this.speed = 0.6; this.r = 22; this.color = '#c0392b'; }
+            else { this.hp = 80 * difficulty; this.speed = 1.4; this.r = 10; this.color = '#27ae60'; }
+            
+            this.maxHp = this.hp;
+        }
+        update() {
+            if(this.dead) return;
+            let currentSpeed = this.speed;
+            if(freezeTimer > 0) currentSpeed *= 0.15;
+            const target = path[this.pIdx + 1];
+            if(!target) {
+                this.dead = true; hp--; updateUI();
+                if(hp <= 0) { gameRunning = false; document.getElementById('gameover-screen').style.display='flex'; }
+                return;
+            }
+            const dx = target.x - this.x, dy = target.y - this.y;
+            const dist = Math.hypot(dx, dy);
+            if(dist < currentSpeed) this.pIdx++;
+            else { this.x += (dx/dist) * currentSpeed; this.y += (dy/dist) * currentSpeed; }
+        }
+        draw() {
+            const sx = this.x * scale, sy = this.y * scale, sr = this.r * scale;
+            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.beginPath(); ctx.ellipse(sx, sy + sr/2, sr, sr/2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = this.color;
+            ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
+            if(this.type === 'shield') { ctx.strokeStyle = "white"; ctx.lineWidth = 3*scale; ctx.stroke(); }
+            ctx.fillStyle = 'black'; ctx.fillRect(sx - sr, sy - sr - 12, sr*2, 5);
+            ctx.fillStyle = '#2ecc71'; ctx.fillRect(sx - sr, sy - sr - 12, (this.hp/this.maxHp)*sr*2, 5);
+        }
+    }
+
+    class Tower {
+        constructor(x, y, type) {
+            this.x = x; this.y = y; this.type = type; this.cd = 0;
+            const cfg = {
+                archer: { r: 170, cd: 35, dmg: 28, color: '#8d6e63' },
+                mage: { r: 150, cd: 70, dmg: 55, color: '#9b59b6' },
+                tesla: { r: 130, cd: 50, dmg: 18, color: '#3498db' },
+                sniper: { r: 380, cd: 160, dmg: 180, color: '#2c3e50' }
+            }[type];
+            this.range = cfg.r; this.maxCd = cfg.cd; this.dmg = cfg.dmg; this.color = cfg.color;
+        }
+        update() {
+            if(this.cd > 0) { this.cd--; return; }
+            const target = enemies.find(e => !e.dead && Math.hypot(e.x-this.x, e.y-this.y) < this.range);
+            if(target) {
+                if(this.type === 'tesla') {
+                    effects.push({x: this.x, y: this.y, tx: target.x, ty: target.y, life: 8, type: 'bolt'});
+                    target.hp -= this.dmg;
+                    checkDeath(target);
+                } else {
+                    projectiles.push({ x: this.x, y: this.y, target, dmg: this.dmg, speed: 10, color: this.color, type: this.type });
+                }
+                this.cd = this.maxCd;
+            }
+        }
+        draw(isGhost = false) {
+            const sx = this.x * scale, sy = this.y * scale, s = scale;
+            if(isGhost) ctx.globalAlpha = 0.5;
+            const time = Date.now()/500;
+            const breath = isGhost ? 0 : Math.sin(time)*2;
+            if(this.type === 'archer') {
+                ctx.fillStyle = "#5d4037"; ctx.fillRect(sx-16*s, sy-16*s, 32*s, 32*s);
+                ctx.fillStyle = "#8d6e63"; ctx.fillRect(sx-12*s, sy-25*s, 24*s, 25*s);
+                ctx.fillStyle = "#c0392b"; ctx.beginPath(); 
+                ctx.moveTo(sx-18*s, sy-25*s); ctx.lineTo(sx, sy-40*s+breath); ctx.lineTo(sx+18*s, sy-25*s); ctx.fill();
+            } 
+            else if(this.type === 'mage') {
+                ctx.fillStyle = "#2c3e50"; ctx.beginPath(); ctx.moveTo(sx-15*s, sy+15*s); ctx.lineTo(sx, sy-25*s); ctx.lineTo(sx+15*s, sy+15*s); ctx.fill();
+                ctx.fillStyle = "#9b59b6"; 
+                const pulse = 6 + Math.sin(Date.now()/200)*3;
+                ctx.beginPath(); ctx.arc(sx, sy-30*s+breath, pulse*s, 0, Math.PI*2); ctx.fill();
+            }
+            else if(this.type === 'tesla') {
+                ctx.fillStyle = "#34495e"; ctx.fillRect(sx-8*s, sy-25*s, 16*s, 40*s);
+                ctx.fillStyle = "#bdc3c7"; ctx.beginPath(); ctx.arc(sx, sy-25*s, 10*s, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "#3498db"; ctx.beginPath(); ctx.arc(sx, sy-25*s, (5+Math.sin(time*5)*2)*s, 0, Math.PI*2); ctx.fill();
+            }
+            else if(this.type === 'sniper') {
+                ctx.fillStyle = "#2c3e50"; ctx.fillRect(sx-18*s, sy-10*s, 36*s, 25*s);
+                ctx.fillStyle = "#1a1a1a"; ctx.fillRect(sx-4*s, sy-45*s, 8*s, 40*s);
+                ctx.fillStyle = "#c0392b"; ctx.beginPath(); ctx.arc(sx, sy-45*s, 3*s, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            const dist = Math.hypot(mouse.x - this.x, mouse.y - this.y);
+            if(dist < 30 || isGhost) {
+                ctx.beginPath(); ctx.arc(sx, sy, this.range * s, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fill();
+                ctx.strokeStyle = `rgba(255,255,255,${0.1 + Math.sin(Date.now()/300)*0.1})`;
+                ctx.lineWidth = 2; ctx.stroke();
+            }
+        }
+    }
+
+    function checkDeath(e) {
+        if(e.hp <= 0 && !e.dead) {
+            e.dead = true;
+            for(let i=0; i<10; i++) particles.push(new Particle(e.x, e.y, e.color, 4));
+            gold += e.type === 'boss' ? 200 : (e.type === 'shield' ? 50 : 20);
+            if(e.type === 'boss') sounds.deathLarge(); else sounds.deathSmall();
+            updateUI();
+        }
+    }
+
+    function loop() {
+        if(!gameRunning) return;
+        ctx.fillStyle = "#549c3d"; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.strokeStyle = "#E6C288"; ctx.lineWidth = 54 * scale; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); path.forEach((p,i)=>i==0?ctx.moveTo(p.x*scale,p.y*scale):ctx.lineTo(p.x*scale,p.y*scale));
+        ctx.stroke();
+        if(freezeTimer > 0) {
+            ctx.fillStyle = "rgba(0, 210, 255, 0.15)"; ctx.fillRect(0,0,canvas.width,canvas.height);
+            freezeTimer--;
+        }
+        enemies = enemies.filter(e => !e.dead);
+        enemies.forEach(e => { e.update(); e.draw(); });
+        towers.forEach(t => { t.update(); t.draw(); });
+        if(buildMode) {
+            const ghost = new Tower(mouse.x, mouse.y, buildMode);
+            ghost.draw(true);
+        }
+        projectiles = projectiles.filter(p => {
+            const dx = p.target.x - p.x, dy = p.target.y - p.y;
+            const dist = Math.hypot(dx, dy);
+            if(dist < p.speed) {
+                p.target.hp -= p.dmg;
+                for(let i=0; i<3; i++) particles.push(new Particle(p.x, p.y, p.color, 2));
+                checkDeath(p.target);
+                return false;
+            }
+            p.x += (dx/dist) * p.speed;
+            p.y += (dy/dist) * p.speed;
+            ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x*scale, p.y*scale, 4*scale, 0, Math.PI*2); ctx.fill();
+            return true;
+        });
+        effects = effects.filter(f => {
+            f.life--;
+            if(f.type === 'bolt') {
+                ctx.strokeStyle = 'white'; ctx.lineWidth = (f.life/2)*scale;
+                ctx.beginPath(); ctx.moveTo(f.x*scale, f.y*scale); ctx.lineTo(f.tx*scale, f.ty*scale); ctx.stroke();
+            } else if(f.type === 'boom') {
+                ctx.fillStyle = '#e67e22'; ctx.globalAlpha = f.life/25;
+                ctx.beginPath(); ctx.arc(f.x*scale, f.y*scale, f.r*scale, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            return f.life > 0;
+        });
+        particles = particles.filter(p => { p.update(); p.draw(); return p.life > 0; });
+        if(meteorCooldown > 0) meteorCooldown--;
+        if(freezeCooldown > 0) freezeCooldown--;
+        
+        // End wave only if no enemies, AND no more enemies are about to spawn
+        if(isWaveActive && enemies.length === 0 && enemiesToSpawn <= 0) {
+            isWaveActive = false;
+            showWaveVictory();
+        }
+        requestAnimationFrame(loop);
+    }
+
+    function showWaveVictory() {
+        gameRunning = false;
+        sounds.winWave();
+        document.getElementById('wave-victory-text').innerText = "ניצחת את גל " + wave + "!";
+        document.getElementById('wave-victory-screen').style.display = 'flex';
+    }
+
+    function goToQuiz() {
+        document.getElementById('wave-victory-screen').style.display = 'none';
+        triggerQuiz();
+    }
+
+    function triggerQuiz() {
+        const quizScreen = document.getElementById('quiz-screen');
+        const qText = document.getElementById('q-text');
+        const qOptions = document.getElementById('q-options');
+        const qIdx = (wave - 1) % historyQuestions.length;
+        const qData = historyQuestions[qIdx];
+        qText.innerText = qData.q;
+        qOptions.innerHTML = '';
+        qData.a.forEach((opt, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => handleQuizAnswer(i, qData.c);
+            qOptions.appendChild(btn);
+        });
+        quizScreen.style.display = 'flex';
+    }
+
+    function handleQuizAnswer(index, correct) {
+        const quizScreen = document.getElementById('quiz-screen');
+        if(index === correct) {
+            sounds.success();
+            const bonus = 120 + (wave * 30);
+            gold += bonus;
+        } else {
+            sounds.fail();
+        }
+        quizScreen.style.display = 'none';
+        gameRunning = true;
+        document.getElementById('next-wave-btn').disabled = false;
+        updateUI();
+        requestAnimationFrame(loop);
+    }
+
+    function nextWave() {
+        wave++;
+        isWaveActive = true;
+        document.getElementById('next-wave-btn').disabled = true;
+        updateUI();
+        
+        let count = 6 + wave * 3;
+        enemiesToSpawn = count; // Track spawn count globaly
+        
+        const spawn = setInterval(() => {
+            if(!gameRunning && !document.getElementById('quiz-screen').style.display && !document.getElementById('wave-victory-screen').style.display) { clearInterval(spawn); return; }
+            if(!gameRunning) return; // Pause spawning if game is paused
+
+            let type = 'normal';
+            if(wave > 2 && Math.random() > 0.7) type = 'runner';
+            if(wave > 5 && Math.random() > 0.75) type = 'shield';
+            if(wave % 5 === 0 && count === 1) type = 'boss';
+            
+            enemies.push(new Enemy(wave, type));
+            count--;
+            enemiesToSpawn--;
+            if(count <= 0) clearInterval(spawn);
+        }, 900 - Math.min(wave * 25, 500));
+    }
+
+    function setBuild(type) {
+        buildMode = type;
+        document.getElementById('build-tip').style.display = 'block';
+    }
+
+    function castMeteor() {
+        if(meteorCooldown > 0) return;
+        sounds.meteor();
+        enemies.forEach(e => {
+            if(!e.dead) {
+                e.hp -= 250;
+                effects.push({x: e.x, y: e.y, r: 50, life: 25, type: 'boom'});
+                checkDeath(e);
+            }
+        });
+        meteorCooldown = 1500;
+        updateUI();
+    }
+
+    function castFreeze() {
+        if(freezeCooldown > 0) return;
+        sounds.freeze();
+        freezeTimer = 360; 
+        freezeCooldown = 1200;
+        updateUI();
+    }
+
+    canvas.addEventListener('mousemove', e => {
+        const r = canvas.getBoundingClientRect();
+        mouse.x = (e.clientX - r.left) / scale;
+        mouse.y = (e.clientY - r.top) / scale;
+    });
+
+    canvas.addEventListener('click', () => {
+        if(buildMode) {
+            const cost = { archer: 50, mage: 90, tesla: 150, sniper: 200 }[buildMode];
+            if(gold >= cost) {
+                towers.push(new Tower(mouse.x, mouse.y, buildMode));
+                gold -= cost;
+                buildMode = null;
+                document.getElementById('build-tip').style.display = 'none';
+                sounds.build();
+                updateUI();
+            }
+        }
+    });
+
+    function updateUI() {
+        document.getElementById('hp-txt').innerText = hp;
+        document.getElementById('gold-txt').innerText = gold;
+        document.getElementById('wave-txt').innerText = wave;
+        document.getElementById('b-archer').disabled = gold < 50;
+        document.getElementById('b-mage').disabled = gold < 90;
+        document.getElementById('b-tesla').disabled = gold < 150;
+        document.getElementById('b-sniper').disabled = gold < 200;
+        document.getElementById('b-meteor').disabled = meteorCooldown > 0;
+        document.getElementById('b-meteor').querySelector('.price').innerText = meteorCooldown > 0 ? Math.ceil(meteorCooldown/60)+'ש' : 'מוכן';
+        document.getElementById('b-freeze').disabled = freezeCooldown > 0;
+        document.getElementById('b-freeze').querySelector('.price').innerText = freezeCooldown > 0 ? Math.ceil(freezeCooldown/60)+'ש' : 'מוכן';
+    }
+</script>
+</body>
+</html>
