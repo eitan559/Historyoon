@@ -108,12 +108,26 @@
         .card-text { font-size: 1.3rem; font-weight: 700; margin-bottom: 25px; line-height: 1.4; }
         
         .quiz-options { display: grid; gap: 12px; width: 100%; }
+        
         .option-btn {
             padding: 14px; border: 2px solid #ddd; border-radius: 10px;
             cursor: pointer; font-weight: 600; background: #f9f9f9; transition: 0.2s;
             font-size: 1.1rem; text-align: right;
         }
-        .option-btn:hover { background: #eee; border-color: var(--gold); }
+        .option-btn:hover:not([disabled]) { background: #eee; border-color: var(--gold); }
+
+        /* צבעים לתשובות */
+        .option-btn.correct {
+            background-color: var(--success) !important;
+            color: white !important;
+            border-color: #27ae60 !important;
+        }
+
+        .option-btn.wrong {
+            background-color: var(--danger) !important;
+            color: white !important;
+            border-color: #c0392b !important;
+        }
 
         .main-btn {
             padding: 15px 40px; font-size: 1.5rem; background: var(--accent);
@@ -204,7 +218,7 @@
 
     let enemies = [], towers = [], projectiles = [], effects = [], particles = [];
     let meteorCooldown = 0, freezeCooldown = 0, freezeTimer = 0;
-    let enemiesToSpawn = 0; // Track remaining spawns to prevent early wave end
+    let enemiesToSpawn = 0; 
 
     const historyQuestions = [
         { q: "מי נחשב למייסד האסלאם?", a: ["עלי", "מוחמד", "אבו בכר", "עומר"], c: 1 },
@@ -444,7 +458,6 @@
         if(meteorCooldown > 0) meteorCooldown--;
         if(freezeCooldown > 0) freezeCooldown--;
         
-        // End wave only if no enemies, AND no more enemies are about to spawn
         if(isWaveActive && enemies.length === 0 && enemiesToSpawn <= 0) {
             isWaveActive = false;
             showWaveVictory();
@@ -482,20 +495,29 @@
         quizScreen.style.display = 'flex';
     }
 
-    function handleQuizAnswer(index, correct) {
-        const quizScreen = document.getElementById('quiz-screen');
-        if(index === correct) {
+    function handleQuizAnswer(selectedIndex, correctIndex) {
+        const options = document.querySelectorAll('.option-btn');
+        options.forEach(btn => btn.disabled = true); // Disable double click
+
+        if(selectedIndex === correctIndex) {
+            options[selectedIndex].classList.add('correct');
             sounds.success();
             const bonus = 120 + (wave * 30);
             gold += bonus;
         } else {
+            options[selectedIndex].classList.add('wrong');
+            options[correctIndex].classList.add('correct'); // Show correct answer
             sounds.fail();
         }
-        quizScreen.style.display = 'none';
-        gameRunning = true;
-        document.getElementById('next-wave-btn').disabled = false;
-        updateUI();
-        requestAnimationFrame(loop);
+        
+        // Delay to show color
+        setTimeout(() => {
+            document.getElementById('quiz-screen').style.display = 'none';
+            gameRunning = true;
+            document.getElementById('next-wave-btn').disabled = false;
+            updateUI();
+            requestAnimationFrame(loop);
+        }, 1500);
     }
 
     function nextWave() {
@@ -505,11 +527,10 @@
         updateUI();
         
         let count = 6 + wave * 3;
-        enemiesToSpawn = count; // Track spawn count globaly
+        enemiesToSpawn = count; 
         
         const spawn = setInterval(() => {
-            if(!gameRunning && !document.getElementById('quiz-screen').style.display && !document.getElementById('wave-victory-screen').style.display) { clearInterval(spawn); return; }
-            if(!gameRunning) return; // Pause spawning if game is paused
+            if(!gameRunning) { clearInterval(spawn); return; }
 
             let type = 'normal';
             if(wave > 2 && Math.random() > 0.7) type = 'runner';
